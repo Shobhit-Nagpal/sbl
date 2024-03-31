@@ -40,20 +40,16 @@ async function main() {
 
   await mintTokens(connection, user, mint, tokenAcc.address, user, 100);
 
-  const receiver = new web3.PublicKey(
-    "cPCtdiH74Diga568rAHy7BQbBmhgCKC3KP9AML4sxcv",
-  );
-
-  const MINT_ADDRESS = "FNQExDf5BdPb8pZCezDsfJmrLmA8xsTt4L2XU1pwhE6s";
+  const MINT_ADDRESS = mint;
   const metaplex = Metaplex.make(connection)
-  .use(keypairIdentity(user))
-  .use(
-    bundlrStorage({
-      address: "https://devnet.bundlr.network",
+    .use(keypairIdentity(user))
+    .use(
+      bundlrStorage({
+        address: "https://devnet.bundlr.network",
         providerUrl: "https://api.devnet.solana.com",
         timeout: 60000,
-    }),
-  );
+      }),
+    );
 
   await createTokenMetadata(
     connection,
@@ -62,9 +58,12 @@ async function main() {
     user,
     "Symbol",
     "SBL",
-    "Chase signal among noise."
-  )
+    "Chase signal among noise.",
+  );
 
+  const receiver = new web3.PublicKey(
+    "cPCtdiH74Diga568rAHy7BQbBmhgCKC3KP9AML4sxcv",
+  );
   const receiverTokenAccount = await createTokenAccount(
     connection,
     user,
@@ -83,7 +82,6 @@ async function main() {
   );
 
   await burnTokens(connection, user, tokenAcc.address, mint, user, 25);
-
 }
 
 main()
@@ -256,6 +254,64 @@ async function createTokenMetadata(
         createMetadataAccountArgsV3: {
           collectionDetails: null,
           data: tokenMetadata,
+          isMutable: true,
+        },
+      },
+    ),
+  );
+
+  const txnSig = await web3.sendAndConfirmTransaction(connection, txn, [user]);
+  console.log(
+    `Create Metadata Account: https://explorer.solana.com/tx/${txnSig}?cluster=devnet`,
+  );
+}
+
+async function updateTokenMetadata(
+  connection: web3.Connection,
+  metaplex: Metaplex,
+  mint: web3.PublicKey,
+  user: web3.Keypair,
+  name: string,
+  symbol: string,
+  description: string,
+) {
+  const buffer = fs.readFileSync("assets/symbol-logo.png");
+  const file = toMetaplexFile(buffer, "symbol.png");
+
+  const imageUri = await metaplex.storage().upload(file);
+  console.log("Image uri: ", imageUri);
+
+  const { uri } = await metaplex.nfts().uploadMetadata({
+    name: name,
+    description: description,
+    image: imageUri,
+  });
+
+  console.log("Metadata uri: ", uri);
+
+  const metadataPDA = metaplex.nfts().pdas().metadata({ mint });
+
+  const tokenMetadata = {
+    name: name,
+    symbol: symbol,
+    uri: uri,
+    sellerFeeBasisPoints: 0,
+    creators: null,
+    collection: null,
+    uses: null,
+  } as DataV2;
+
+  const txn = new web3.Transaction().add(
+    createUpdateMetadataAccountV2Instruction(
+      {
+        metadata: metadataPDA,
+        updateAuthority: user.publicKey,
+      },
+      {
+        updateMetadataAccountArgsV2: {
+          data: tokenMetadata,
+          updateAuthority: user.publicKey,
+          primarySaleHappened: true,
           isMutable: true,
         },
       },
